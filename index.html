@@ -2164,7 +2164,7 @@
       #entryCandle.hide .ec-card {
         opacity: 0;
         transform: translateY(-8px) scale(0.96);
-        transition-duration: 0.65s;
+        transition-duration: 0.8s;
       }
       .ec-svg {
         display: block;
@@ -6559,10 +6559,13 @@
       //   with a shorter rain, done in about three to four seconds.
       //   Candle: the #entryCandle welcome overlay (a small cake
       //   with a flickering, glowing flame) fades in centred over
-      //   the hero, then fades out on its own after ~3.3s — sooner
-      //   if she taps anywhere. It is pointer-events:none and sits
-      //   below the nav and music button, so the site stays fully
-      //   usable underneath it the whole time.
+      //   the hero, stays fully visible for ~3.2s once its fade-in
+      //   has finished, then fades out gently over ~0.8s — about
+      //   four seconds on screen in all. A tap only dismisses it
+      //   after the first ~2s, so a stray tap can't cut it short.
+      //   It is pointer-events:none and sits below the nav and
+      //   music button, so the site stays fully usable underneath
+      //   it the whole time.
       //   Reduced motion: celebrate() already shrinks to a small
       //   pop with no rain, the overlay's flame is static (its CSS
       //   kills the flicker/pulse), and it leaves a little sooner.
@@ -6601,26 +6604,60 @@
           matchMedia("(prefers-reduced-motion: reduce)").matches;
         ov.hidden = false;
         void ov.offsetWidth;
-        ov.classList.add("show");
+        const shownAt = Date.now();
         let gone = false;
-        const dismiss = () => {
+        let holdTimer = null;
+        let visibleTimer = null;
+        const dismiss = (force) => {
           if (gone) return;
+          // A stray tap in the first ~2s must not cut the moment
+          // short; only the hold timer (force) or a later tap may
+          // dismiss it.
+          if (!force && Date.now() - shownAt < 2000) return;
           gone = true;
-          document.removeEventListener("pointerdown", dismiss, true);
-          document.removeEventListener("touchstart", dismiss, true);
+          document.removeEventListener("pointerdown", tapDismiss, true);
+          document.removeEventListener("touchstart", tapDismiss, true);
+          if (holdTimer) clearTimeout(holdTimer);
+          if (visibleTimer) clearTimeout(visibleTimer);
           ov.classList.remove("show");
           ov.classList.add("hide");
-          setTimeout(() => {
-            ov.hidden = true;
-            ov.classList.remove("hide");
-          }, 700);
+          setTimeout(
+            () => {
+              ov.hidden = true;
+              ov.classList.remove("hide");
+            },
+            reduce ? 350 : 850,
+          );
         };
-        // Any tap anywhere lets it go early; the overlay itself
-        // never takes the tap (pointer-events:none), so the tap
-        // still does whatever it was meant to do on the page.
-        document.addEventListener("pointerdown", dismiss, true);
-        document.addEventListener("touchstart", dismiss, true);
-        setTimeout(dismiss, reduce ? 2600 : 3300);
+        const tapDismiss = () => dismiss(false);
+        // A tap anywhere lets it go once it has had its moment;
+        // the overlay itself never takes the tap
+        // (pointer-events:none), so the tap still does whatever it
+        // was meant to do on the page.
+        document.addEventListener("pointerdown", tapDismiss, true);
+        document.addEventListener("touchstart", tapDismiss, true);
+        ov.classList.add("show");
+        // The hold timer starts only once the card is actually
+        // visible — when its fade-in transition ends (with a
+        // fallback in case transitionend never fires) — so the
+        // gate fade / entry transition can't eat into its ~3.2s
+        // of steady, fully-visible time before the ~0.8s fade-out.
+        const beginHold = () => {
+          if (gone || holdTimer) return;
+          holdTimer = setTimeout(() => dismiss(true), reduce ? 2600 : 3200);
+        };
+        const card = ov.querySelector(".ec-card");
+        if (card && !reduce) {
+          const onEnd = (e) => {
+            if (e.propertyName !== "opacity") return;
+            card.removeEventListener("transitionend", onEnd);
+            beginHold();
+          };
+          card.addEventListener("transitionend", onEnd);
+          visibleTimer = setTimeout(beginHold, 750);
+        } else {
+          visibleTimer = setTimeout(beginHold, reduce ? 320 : 600);
+        }
       }
       // Same bundling reason as openGift / blowCandle: expose the
       // handler on window so the lock gate's separate small script
