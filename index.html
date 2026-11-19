@@ -2124,8 +2124,9 @@
       }
 
       /* ---- entry celebration candle: a small birthday-candle welcome
-         overlay shown over the hero when the lock gate's surprise
-         button is tapped. Fixed and centred, pointer-events:none so
+         overlay shown over the hero on entry (the intro's "Open
+         your surprise" tap, or the lock gate's in locked variants).
+         Fixed and centred, pointer-events:none so
          it can never block a tap or a scroll, z-index 9 — above the
          hero content, below the nav (z 10) and the music button
          (z 80). JS adds .show as it appears and .hide as it leaves;
@@ -3406,6 +3407,33 @@
       // even if that larger script is slow, blocked or fails on a device.
       (function () {
         var opened = false;
+        var celebrationRequested = false;
+        // Entry celebration (confetti burst + the #entryCandle cake
+        // overlay): the main script defines it as
+        // window.entryCelebration, which fires only once itself.
+        // Request it from here — the one path every intro entry goes
+        // through — so entering via "Open your surprise" plays it
+        // exactly like the lock gate's entry did. If a lock gate is
+        // re-added and also calls entryCelebration after enter(),
+        // that second call is a no-op (entryCelebration's own
+        // once-only guard, backed by celebrationRequested here and
+        // the opened guard on this opener). If the main script has
+        // not finished loading on a very fast tap, retry briefly
+        // for it; entry itself never waits on it.
+        function fireEntryCelebration() {
+          if (celebrationRequested) return;
+          celebrationRequested = true;
+          var tries = 0;
+          (function attempt() {
+            try {
+              if (typeof window.entryCelebration === "function") {
+                window.entryCelebration();
+                return;
+              }
+            } catch (err) {}
+            if (++tries <= 20) setTimeout(attempt, 100);
+          })();
+        }
         function openSurprise() {
           if (opened) return;
           opened = true;
@@ -3426,6 +3454,7 @@
             if (intro) intro.style.display = "none";
             if (main) main.style.display = "block";
             window.scrollTo(0, 0);
+            fireEntryCelebration();
             return;
           }
           // Smooth opening: the page is put in place first, with the
@@ -3434,6 +3463,11 @@
           // glides up and fades away over it. One continuous motion,
           // no instant cut and no layout jump.
           main.style.display = "block";
+          // The hero is in place now: fire the entry celebration.
+          // entryCelebration itself waits ~350ms before bursting,
+          // so the confetti and cake land just as the intro glide
+          // lifts and the hero comes into view.
+          fireEntryCelebration();
           var risers = [];
           var kids = main.querySelectorAll(".hero > *");
           for (var i = 0; i < kids.length; i++) {
@@ -3647,9 +3681,9 @@
         <p style="font-size: 12px">November 20 · A day as lovely as you</p>
       </section>
 
-      <!-- Entry celebration candle: hidden until the lock gate's
-           surprise button is tapped, when entryCelebration() shows
-           it over the hero for a few seconds. Purely decorative —
+      <!-- Entry celebration candle: hidden until entry, when
+           entryCelebration() shows it over the hero for a few
+           seconds. Purely decorative —
            pointer-events:none via its CSS, aria-hidden, and it
            dismisses itself (or on any tap) without touching the
            Wish section's own candle below. -->
@@ -6545,14 +6579,17 @@
         setTimeout(() => cv.remove(), isEntry ? 8000 : 14000);
       }
 
-      // Entry celebration for the lock gate's "Click to get your
-      // surprise ♡" tap ONLY. The gate's surprise handler calls this
-      // (as window.entryCelebration) after unlock() + enter() have
-      // already run, in its own try/catch, so the celebration is an extra
+      // Entry celebration, played once on entry — however the site
+      // is entered. In this unlocked build the entry gate's small
+      // script requests it (as window.entryCelebration) from inside
+      // openSurprise, just as #main is put in place; in locked
+      // variants the lock gate's surprise handler calls it after
+      // unlock() + enter() have run. Either way it is an extra
       // layered on top of an entry that has already happened and can
-      // never delay or block it. It starts a beat after the tap
-      // (~350ms) so the gate's own fade is already lifting and the
-      // hero is coming into view as the confetti bursts.
+      // never delay or block it, and the entryCelebrated guard
+      // below makes any second call a no-op. It starts a beat after
+      // the tap (~350ms) so the entry fade is already lifting and
+      // the hero is coming into view as the confetti bursts.
       //   Confetti: celebrate() reused with balloons OFF — balloons
       //   belong only to the candle blow in the Wish section — in
       //   the site's pinks, white and gold, bursting from the hero
@@ -6660,8 +6697,9 @@
         }
       }
       // Same bundling reason as openGift / blowCandle: expose the
-      // handler on window so the lock gate's separate small script
-      // can reach it on the bundled phone build.
+      // handler on window so the entry gate's separate small script
+      // (and a lock gate's, in locked variants) can reach it on the
+      // bundled phone build.
       window.entryCelebration = entryCelebration;
 
       // Wish
